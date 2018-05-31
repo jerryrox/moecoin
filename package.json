@@ -1,0 +1,10 @@
+{
+  "name": "moecoin",
+  "version": "1.0.0",
+  "description": "Another crypto currency with NodeJS.",
+  "main": "src/server.js",
+  "repository": "https://github.com/jerryrox/moecoin.git",
+  "author": "jerryrox <jerryrox@live.co.kr>",
+  "license": "MIT",
+  "private": false
+}
