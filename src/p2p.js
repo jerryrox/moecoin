@@ -72,7 +72,7 @@ const initSocketConnection = (socket) => {
     }, 1000);
     setInterval(() => {
         if(sockets.includes(socket)) {
-            sendMessage(socket);
+            sendMessage(socket, '');
         }
     }, 1000);
 };
