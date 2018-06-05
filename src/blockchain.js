@@ -289,5 +289,6 @@ module.exports = {
     getAccountBalance,
     sendTransaction,
     handleIncomingTransaction,
-    getUnspentOutputList
+    getUnspentOutputList,
+    getBalance
 };

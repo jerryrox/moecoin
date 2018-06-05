@@ -6,7 +6,7 @@ const P2P = require("./p2p");
 const Wallet = require("./wallet");
 const MemPool = require("./memPool");
 
-const {getBlockChain, createNewBlock, getAccountBalance, sendTransaction} = Blockchain;
+const {getBlockChain, createNewBlock, getAccountBalance, sendTransaction, getBalance, getUnspentOutputList} = Blockchain;
 const {startP2PServer, connectToPeers} = P2P;
 const {initWallet, getPublicFromWallet} = Wallet;
 const {getMemPool} = MemPool;
@@ -50,6 +50,32 @@ app.get("/me/address", (req, res) => {
     res.send(getPublicFromWallet());
 });
 
+app.get("/blocks/:hash", (req, res) => {
+    const { hash } = req.params;
+    const block = _.find(getBlockChain(), {
+        hash
+    });
+
+    if(block === undefined) {
+        res.status(400).send("Block not found");
+    }
+    else {
+        res.send(block);
+    }
+});
+
+app.get("/transactions/:id", (req, res) => {
+    const transaction = _(getBlockChain())
+        .map(blocks => blocks.data)
+        .flatten()
+        .find({ id: req.params.id });
+
+    if(transaction === undefined)
+        res.status(400).send("Transaction not found");
+    else
+        res.send(transaction);
+});
+
 app.route("/transactions")
     .get((req, res) => {
         res.send(getMemPool());
@@ -68,6 +94,19 @@ app.route("/transactions")
             res.status(400).send(e.message);
         }
     });
+
+app.get("/:address/balance", (req, res) => {
+    const { address } = req.params;
+    const balance = getBalance(address, getUnspentOutputList());
+    
+    if(balance === null || balance === undefined) {
+        res.status(400).send("Address not found.");
+    }
+    else {
+        res.send({ balance });
+    }
+});
+    
 
 initWallet();
 // WebSocket server

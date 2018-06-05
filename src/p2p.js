@@ -56,7 +56,7 @@ const startP2PServer = (server) => {
         initSocketConnection(ws);
     });
     wsServer.on("error", () => {
-        console.log(error);
+        console.log("startP2PServer - error");
     });
     console.log("startP2PServer - P2P server opened");
 };
@@ -68,7 +68,12 @@ const initSocketConnection = (socket) => {
     sendMessage(socket, getLatest());
 
     setTimeout(() => {
-        sendMessage(socket, getAllMemPool());
+        sendMessageToAll(socket, getAllMemPool());
+    }, 1000);
+    setInterval(() => {
+        if(sockets.includes(socket)) {
+            sendMessage(socket);
+        }
     }, 1000);
 };
 
@@ -196,6 +201,8 @@ const connectToPeers = (newPeer) => {
     ws.on("open", () => {
         initSocketConnection(ws);
     });
+    ws.on("close", () => console.log("connectToPeers - " + JSON.stringify(error)));
+    ws.on("error", () => console.log("connectToPeers - " + JSON.stringify(error)));
 };
 
 module.exports = {

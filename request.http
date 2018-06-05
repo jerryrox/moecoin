@@ -35,3 +35,7 @@ Content-Type: application/json
 ###
 
 GET http://localhost:3000/transactions
+
+###
+
+GET http://localhost:3000/04aaceddcefd4e1e8fab5d19df53901c46106c45a67a3606a8250e4c549947e036d3b965f602cfb9eb1809ef27dacd4ca5ad1a172e81f982f5eb54953f23d15d20/balance
