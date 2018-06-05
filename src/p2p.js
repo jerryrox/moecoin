@@ -1,13 +1,17 @@
 const WebSockets = require("ws");
 const Blockchain = require("./blockchain");
+const MemPool = require("./memPool");
 
-const { getLatestBlock, isBlockStructureValid, addBlockToChain, replaceChain, getBlockChain } = Blockchain;
+const { getLatestBlock, isBlockStructureValid, addBlockToChain, replaceChain, getBlockChain, handleIncomingTransaction } = Blockchain;
+const {getMemPool} = MemPool;
 const sockets = [];
 
 // Message types
 const GET_LATEST = "GET_LATEST";
 const GET_ALL = "GET_ALL";
 const BLOCKCHAIN_RESPONSE = "BLOCKCHAIN_RESPONSE";
+const REQUEST_MEMPOOL = "REQUEST_MEMPOOL";
+const MEMPOOL_RESPONSE = "MEMPOOL_RESPONSE";
 
 // Message creators
 const getLatest = () => {
@@ -28,6 +32,18 @@ const blockchainResponse = (data) => {
         data
     };
 };
+const getAllMemPool = () => {
+    return {
+        type: REQUEST_MEMPOOL,
+        data: null
+    }
+};
+const memPoolResponse = (data) => {
+    return {
+        type: MEMPOOL_RESPONSE,
+        data: data
+    };
+};
 
 const getSockets = () => {
     return sockets;
@@ -39,6 +55,9 @@ const startP2PServer = (server) => {
     wsServer.on("connection", ws => {
         initSocketConnection(ws);
     });
+    wsServer.on("error", () => {
+        console.log(error);
+    });
     console.log("startP2PServer - P2P server opened");
 };
 
@@ -46,8 +65,11 @@ const initSocketConnection = (socket) => {
     sockets.push(socket);
     setupSocketMessages(socket);
     setupSocketError(socket);
-
     sendMessage(socket, getLatest());
+
+    setTimeout(() => {
+        sendMessage(socket, getAllMemPool());
+    }, 1000);
 };
 
 const parseData = (data) => {
@@ -79,8 +101,23 @@ const setupSocketMessages = (socket) => {
                 break;
             handleBlockchainResponse(receivedBlocks);
             break;
+        case REQUEST_MEMPOOL:
+            sendMessage(socket, returnMemPool());
+            break;
+        case MEMPOOL_RESPONSE:
+            const receivedTransactions = message.data;
+            if(receivedTransactions === null)
+                break;
+            receivedTransactions.forEach(transaction => {
+                try {
+                    handleIncomingTransaction(transaction);
+                }
+                catch(e) {
+                    console.log(`setupSocketMessages - MEMPOOL_RESPONSE : ${JSON.stringify(e)}`);
+                }
+            });
+            break;
         }
-        console.log(message);
     });
 };
 
@@ -110,6 +147,10 @@ const handleBlockchainResponse = (receivedBlocks) => {
     }
 };
 
+const returnMemPool = () => {
+    return memPoolResponse(getMemPool());
+};
+
 const sendMessage = (socket, message) => {
     socket.send(JSON.stringify(message));
 };
@@ -130,6 +171,10 @@ const responseAll = () => {
 
 const broadcastNewBlock = () => {
     broadcastMessage(responseLatest());
+};
+
+const broadcastMemPool = () => {
+    broadcastMessage(returnMemPool());
 };
 
 const setupSocketError = (socket) => {
@@ -156,5 +201,6 @@ const connectToPeers = (newPeer) => {
 module.exports = {
     startP2PServer,
     connectToPeers,
-    broadcastNewBlock
+    broadcastNewBlock,
+    broadcastMemPool
 };

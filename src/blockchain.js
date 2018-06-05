@@ -1,8 +1,16 @@
 const CryptoJS = require("crypto-js");
 const hexToBinary = require("hex-to-binary");
+const Wallet = require("./wallet");
+const Transactions = require("./transactions");
+const MemPool = require("./memPool");
+const _ = require("lodash");
 
 const BLOCK_GEN_INTERVAL = 10;
 const DIFF_ADJUST_INTERVAL = 10;
+
+const { initWallet, getBalance, getPublicFromWallet, createTransaction, getPrivateFromWallet } = Wallet;
+const { createRewardTransaction, processTransactions } = Transactions;
+const { addToMemPool, getMemPool, updateMemPool } = MemPool;
 
 class Block {
 
@@ -17,17 +25,31 @@ class Block {
     }
 }
 
+const genesisTransaction = {
+    inputs: [{
+        outputId: "",
+        outputIndex: 0,
+        signature: ""
+    }],
+    outputs: [{
+        address: "04aaceddcefd4e1e8fab5d19df53901c46106c45a67a3606a8250e4c549947e036d3b965f602cfb9eb1809ef27dacd4ca5ad1a172e81f982f5eb54953f23d15d20",
+        amount: 50
+    }],
+    id: "2c1ba92de2f3f26797d20541c5b79bd957b23717498978081c7fd961959ad40b"
+};
+
 const genesisBlock = new Block(
     0,
-    "6E862C22973992457ADC001C5B3A18976FF20ABFEEA6B00BA5363F9210404D61",
+    "0f10ce0a17f15461360e9b4c0a892b0c3e339529dc2e496625a77c2cdef1defc",
     null,
     1527900734,
-    "Anime r0xx",
+    [genesisTransaction],
     0,
     0
 );
 
 let blockChain = [genesisBlock];
+let unspentOutputs = processTransactions(blockChain[0].data, [], 0);
 
 const getLatestBlock = () => {
     return blockChain[blockChain.length-1];
@@ -45,7 +67,16 @@ const createHash = (index, previousHash, timestamp, data, difficulty, nonce) => 
     return CryptoJS.SHA256(index + previousHash + timestamp + JSON.stringify(data) + difficulty + nonce).toString();
 };
 
-const createNewBlock = (data) => {
+const createNewBlock = () => {
+    const rewardTransaction = createRewardTransaction(
+        getPublicFromWallet(),
+        getLatestBlock().index + 1
+    );
+    const blockData = [rewardTransaction].concat(getMemPool());
+    return createNewRawBlock(blockData);
+};
+
+const createNewRawBlock = (data) => {
     const previousBlock = getLatestBlock();
     const newBlockIndex = previousBlock.index + 1;
     const newTimestamp = getTimestamp();
@@ -106,7 +137,7 @@ const findBlock = (index, previousHash, timestamp, data, difficulty) => {
     }
 };
 
-const hashMatchesDifficulty = (hash, difficulty) => {
+const hashMatchesDifficulty = (hash, difficulty = 0) => {
     const hashInBinary = hexToBinary(hash);
     const requiredZeros = "0".repeat(difficulty);
     return hashInBinary.startsWith(requiredZeros);
@@ -153,7 +184,7 @@ const isBlockStructureValid = (block) => {
         typeof block.hash === "string" &&
         typeof block.previousHash === "string" &&
         typeof block.timestamp === "number" &&
-        typeof block.data === "string"
+        typeof block.data === "object"
     );
 };
 
@@ -164,48 +195,88 @@ const isChainValid = (targetChain) => {
 
     if(!isGenesisValid(targetChain[0])) {
         console.log("isChainValid - Invalid genesis block mismatch!");
-        return false;
+        return null;
     }
 
-    for(let i=1; i<targetChain.length; i++) {
-        if(!isBlockValid(targetChain[i], targetChain[i-1])) {
-            console.log(`isChainValid - Invalid block sequence at index: ${i}`);
-            return false;
+    let foreignOutputs = [];
+    for(let i=0; i<targetChain.length; i++) {
+        const currentBlock = targetChain[i];
+        if(i !== 0 && !isBlockValid(currentBlock, targetChain[i-1])) {
+            console.log(`isChainValid - Block at index ${i} is invalid!`)
+            return null;
+        }
+
+        foreignOutputs = processTransactions(
+            currentBlock.data,
+            foreignOutputs,
+            currentBlock.index
+        );
+
+        if(foreignOutputs === null) {
+            console.log("isChainValid - Transactions could not be processed!");
+            return null;
         }
     }
-    return true;
+    return foreignOutputs;
 };
 
 const getDifficultySum = (chain) => {
     return chain.map(block => block.difficulty)
-        .map(diff => diff * diff)
+        .map(diff => Math.pow(2, diff))
         .reduce((a, b) => a + b);
 };
 
 const replaceChain = (newChain) => {
-    if(isChainValid(newChain)) {
-        if(getDifficultySum(newChain) > getDifficultySum(getBlockChain())) {
-            if(newChain.length > getBlockChain().length) {
-                blockChain = newChain;
-                return true;
-            }
-            console.log("replaceChain - newChain's length is smaller!");
-            return false;
-        }
-        console.log("replaceChain - newChain's difficulty is not valid!");
-        return false;
+    const foreignOutputs = isChainValid(newChain);
+    const isValid = foreignOutputs !== null;
+    
+    if(isValid && getDifficultySum(newChain) > getDifficultySum(getBlockChain())) {
+        blockChain = newChain;
+        unspentOutputs = foreignOutputs;
+        updateMemPool(unspentOutputs);
+        require("./p2p").broadcastNewBlock();
+        return true;
     }
-    console.log("replaceChain - newChain is not valid!");
+    console.log("replaceChain - newChain not eligible for replacement.");
     return false;
 };
 
 const addBlockToChain = (newBlock) => {
     if(isBlockValid(newBlock, getLatestBlock())) {
+        const processedTransactions = processTransactions(newBlock.data, unspentOutputs, newBlock.index);
+        if(processedTransactions === null) {
+            console.log("addBlockToChain - Couldn't process transactions.");
+            return false;
+        }
+
         getBlockChain().push(newBlock);
+        unspentOutputs = processedTransactions;
+        updateMemPool(unspentOutputs);
         return true;
     }
     console.log("addBlockToChain - newBlock is not valid!");
     return false;
+};
+
+const getUnspentOutputList = () => {
+    return _.cloneDeep(unspentOutputs);
+};
+
+const getAccountBalance = () => {
+    return getBalance(getPublicFromWallet(), unspentOutputs);
+};
+
+const sendTransaction = (address, amount) => {
+    const transaction = createTransaction(
+        address, amount, getPrivateFromWallet(), getUnspentOutputList(), getMemPool()
+    );
+    addToMemPool(transaction, getUnspentOutputList());
+    require("./p2p").broadcastMemPool();
+    return transaction;
+};
+
+const handleIncomingTransaction = (transaction) => {
+    addToMemPool(transaction, getUnspentOutputList());
 };
 
 module.exports = {
@@ -214,5 +285,9 @@ module.exports = {
     createNewBlock,
     isBlockStructureValid,
     addBlockToChain,
-    replaceChain
+    replaceChain,
+    getAccountBalance,
+    sendTransaction,
+    handleIncomingTransaction,
+    getUnspentOutputList
 };
