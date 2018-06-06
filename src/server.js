@@ -1,4 +1,5 @@
 const express = require("express");
+const cors = require("cors");
 const bodyParser = require("body-parser");
 const morgan = require("morgan");
 const Blockchain = require('./blockchain');
@@ -16,6 +17,7 @@ const app = express();
 
 // Middlewares
 app.use(bodyParser.json());
+app.use(cors());
 app.use(morgan("combined"));
 
 // Start server
