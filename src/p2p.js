@@ -68,7 +68,7 @@ const initSocketConnection = (socket) => {
     sendMessage(socket, getLatest());
 
     setTimeout(() => {
-        sendMessageToAll(socket, getAllMemPool());
+        broadcastMessage(getAllMemPool());
     }, 1000);
     setInterval(() => {
         if(sockets.includes(socket)) {
