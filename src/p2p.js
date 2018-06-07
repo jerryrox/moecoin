@@ -201,8 +201,8 @@ const connectToPeers = (newPeer) => {
     ws.on("open", () => {
         initSocketConnection(ws);
     });
-    ws.on("close", () => console.log("connectToPeers - " + JSON.stringify(error)));
-    ws.on("error", () => console.log("connectToPeers - " + JSON.stringify(error)));
+    ws.on("close", (error) => console.log("connectToPeers - Closed: " + JSON.stringify(error)));
+    ws.on("error", (error) => console.log("connectToPeers - Error: " + JSON.stringify(error)));
 };
 
 module.exports = {
